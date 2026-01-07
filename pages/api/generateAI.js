@@ -1,65 +1,61 @@
 import axios from "axios";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
   try {
-    const { rating, review } = req.body;
+    console.log("API CALLED");
+
+    console.log("Env key present?", !!process.env.GEMINI_API_KEY);
+
+    const { rating, review } = req.body || {};
+    console.log("Incoming body:", req.body);
 
     if (!review) {
-      return res.status(400).json({ error: "Empty review" });
+      return res.status(400).json({ error: "Review text missing" });
     }
 
     const prompt = `
 User review: "${review}"
 Rating: ${rating}
 
-1. Write a short reply to user
-2. Give brief summary
-3. Suggest one recommended action
-
-Return ONLY JSON:
-{"aiResponse":"...","aiSummary":"...","aiAction":"..."}
+Reply shortly, summarize, recommend action.
+Return JSON only with keys aiResponse, aiSummary, aiAction.
 `;
 
-    const r = await axios.post(
+    const response = await axios.post(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
         process.env.GEMINI_API_KEY,
       {
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }]
-          }
-        ]
+        contents: [{ parts: [{ text: prompt }] }]
       }
     );
 
+    console.log("Raw AI response:", response.data);
+
     const text =
-      r?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No text from AI";
+      response?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "NO TEXT RETURNED";
 
     let json;
     try {
       json = JSON.parse(text);
-    } catch (err) {
+    } catch (e) {
       json = {
         aiResponse: text,
-        aiSummary: "Summary unavailable",
-        aiAction: "No action generated"
+        aiSummary: "Parse error",
+        aiAction: "Parse error"
       };
     }
 
     return res.status(200).json(json);
   } catch (err) {
-    // ⛔️ IMPORTANT: send real error back to user
-    console.error("BACKEND ERROR:", err?.response?.data || err.message);
+    console.error("SERVER ERROR FULL OBJECT:", err);
+    console.error("SERVER ERROR RESPONSE:", err?.response?.data);
 
     return res.status(500).json({
-      error: "Backend failed",
-      details: err?.response?.data || err.message
+      message: "SERVER FAILED",
+      hint: "Check message below",
+      error: err?.message,
+      response: err?.response?.data,
     });
   }
 }
