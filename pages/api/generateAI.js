@@ -8,51 +8,58 @@ export default async function handler(req, res) {
   try {
     const { rating, review } = req.body;
 
-    if (!review || !rating) {
-      return res.status(400).json({ error: "Missing fields" });
+    if (!review) {
+      return res.status(400).json({ error: "Empty review" });
     }
 
     const prompt = `
 User review: "${review}"
-Rating: ${rating} stars
+Rating: ${rating}
 
-1. Give short reply to user
+1. Write a short reply to user
 2. Give brief summary
-3. Recommend business action
+3. Suggest one recommended action
 
-Return ONLY JSON like:
-{
- "aiResponse": "...",
- "aiSummary": "...",
- "aiAction": "..."
-}
+Return ONLY JSON:
+{"aiResponse":"...","aiSummary":"...","aiAction":"..."}
 `;
 
     const r = await axios.post(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
         process.env.GEMINI_API_KEY,
       {
-        contents: [{ parts: [{ text: prompt }] }]
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }]
+          }
+        ]
       }
     );
 
     const text =
-      r.data?.candidates?.[0]?.content?.parts?.[0]?.text || "AI returned nothing";
+      r?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No text from AI";
 
     let json;
     try {
       json = JSON.parse(text);
-    } catch {
+    } catch (err) {
       json = {
         aiResponse: text,
-        aiSummary: "Could not parse summary",
+        aiSummary: "Summary unavailable",
         aiAction: "No action generated"
       };
     }
 
     return res.status(200).json(json);
   } catch (err) {
-    console.error("SERVER ERROR:", err.message);
-    return res.status(500).json({ error: "Server failed" });
+    // ⛔️ IMPORTANT: send real error back to user
+    console.error("BACKEND ERROR:", err?.response?.data || err.message);
+
+    return res.status(500).json({
+      error: "Backend failed",
+      details: err?.response?.data || err.message
+    });
   }
 }
